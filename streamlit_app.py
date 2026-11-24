@@ -4,7 +4,13 @@ import streamlit as st
 from math import radians, sin, cos, asin, sqrt
 from datetime import datetime
 
-st.set_page_config(page_title="CONVOY MONITOR", page_icon="🚛", layout="wide", initial_sidebar_state="collapsed")
+# 1. Page configuration
+st.set_page_config(
+    page_title="CONVOY MONITOR", 
+    page_icon="🚛", 
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
 
 REQUIRED_COLUMNS = [
     "convoy_id", "registration", "tour_no", "latitude",
@@ -17,6 +23,9 @@ st.markdown("""
 [data-testid="stMetric"] {background:#f5f7fa; border:1px solid #e4e9f0; padding:14px; border-radius:10px;}
 </style>
 """, unsafe_allow_html=True)
+
+# Optional: You can add an image here later if you upload one to GitHub!
+# st.image("logo.png", width=150)
 
 st.title("🚛 CONVOY MONITOR")
 st.caption("ETA SECURITY & LOGISTICS LTD  |  Intelligent Fleet Monitoring & Control")
@@ -124,7 +133,8 @@ for convoy, group in data.groupby("convoy_id", dropna=False):
     ref = refs.iloc[0]
     for _, row in group.iterrows():
         dist = haversine_km(ref.latitude, ref.longitude, row.latitude, row.longitude)
-        now = pd.Timestamp.now()
+        age = (now - row.gps_time).total_seconds() / 60
+        
         if age < -5:
             status = "GPS TIME CHECK"
         elif age > stale_mins:
@@ -135,6 +145,7 @@ for convoy, group in data.groupby("convoy_id", dropna=False):
             status = "PARKED / STOPPED"
         else:
             status = "WITHIN CONVOY"
+            
         item = row.to_dict()
         item.update(distance_km=dist, status=status, gps_age_min=max(0, age))
         results.append(item)
