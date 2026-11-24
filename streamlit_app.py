@@ -124,7 +124,7 @@ for convoy, group in data.groupby("convoy_id", dropna=False):
     ref = refs.iloc[0]
     for _, row in group.iterrows():
         dist = haversine_km(ref.latitude, ref.longitude, row.latitude, row.longitude)
-        age = (now - row.gps_time).total_seconds() / 60
+        now = pd.Timestamp.now()
         if age < -5:
             status = "GPS TIME CHECK"
         elif age > stale_mins:
