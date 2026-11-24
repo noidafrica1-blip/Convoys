@@ -13,7 +13,7 @@ import streamlit as st
 from math import radians, sin, cos, asin, sqrt
 from datetime import datetime
 
-st.set_page_config(page_title="CONVOY MONITOR", page_icon="🚛", layout="wide")
+st.set_page_config(page_title="CONVOY MONITOR", page_icon="🚛", layout="wide", initial_sidebar_state="collapsed")
 
 REQUIRED_COLUMNS = [
     "convoy_id", "registration", "tour_no", "latitude",
@@ -144,7 +144,7 @@ for convoy, group in data.groupby("convoy_id", dropna=False):
     ref = refs.iloc[0]
     for _, row in group.iterrows():
         dist = haversine_km(ref.latitude, ref.longitude, row.latitude, row.longitude)
-        age = (now - row.gps_time).total_seconds() / 60
+        now = pd.Timestamp.now(tz="UTC").tz_convert(None)
         if age < -5:
             status = "GPS TIME CHECK"
         elif age > stale_mins:
