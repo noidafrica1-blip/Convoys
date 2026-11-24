@@ -1,12 +1,3 @@
-"""
-CONVOY MONITOR — ETA SECURITY & LOGISTICS LTD
-Runnable Streamlit prototype (demo data + CSV upload).
-
-Run locally:
-    pip install -r requirements.txt
-    streamlit run streamlit_app.py
-"""
-
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -48,23 +39,20 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 
 def sample_data():
-    """Synthetic points around Lusaka. Timestamps are relative to 'now',
-    so GPS ages stay realistic no matter when the app is opened."""
     now = utc_now_naive()
 
     def ts(minutes_ago):
         return (now - pd.Timedelta(minutes=minutes_ago)).strftime("%Y-%m-%d %H:%M:%S")
 
     rows = [
-        # convoy_id, registration, tour_no, lat, lon, is_reference, gps_time, speed
         ["CONVOY 01", "TMR001", "TOUR-101", -15.3875, 28.3228, True,  ts(1),  62],
         ["CONVOY 01", "TMR002", "TOUR-101", -15.3950, 28.3300, False, ts(1),  60],
-        ["CONVOY 01", "TMR003", "TOUR-101", -15.3750, 28.3150, False, ts(45), 58],  # stale GPS
-        ["CONVOY 01", "TMR004", "TOUR-101", -15.4500, 28.3700, False, ts(2),  55],  # outside limit
+        ["CONVOY 01", "TMR003", "TOUR-101", -15.3750, 28.3150, False, ts(45), 58], 
+        ["CONVOY 01", "TMR004", "TOUR-101", -15.4500, 28.3700, False, ts(2),  55], 
         ["CONVOY 02", "TMR005", "TOUR-202", -15.4200, 28.2800, True,  ts(1),  48],
         ["CONVOY 02", "TMR006", "TOUR-202", -15.4300, 28.2900, False, ts(1),  47],
-        ["CONVOY 02", "TMR007", "TOUR-202", -15.5200, 28.3500, False, ts(1),  0],   # outside limit
-        ["CONVOY 03", "TMR008", "TOUR-303", -15.4000, 28.3000, False, ts(1),  44],  # no reference truck
+        ["CONVOY 02", "TMR007", "TOUR-202", -15.5200, 28.3500, False, ts(1),  0],   
+        ["CONVOY 03", "TMR008", "TOUR-303", -15.4000, 28.3000, False, ts(1),  44],  
     ]
     return pd.DataFrame(rows, columns=REQUIRED_COLUMNS)
 
@@ -83,7 +71,6 @@ def normalize(df):
         .isin(["true", "1", "yes", "y"])
     )
 
-    # GPS times are interpreted as UTC and stored timezone-naive.
     df["gps_time"] = (
         pd.to_datetime(df["gps_time"], errors="coerce", utc=True)
         .dt.tz_convert(None)
@@ -95,7 +82,6 @@ def normalize(df):
     return df
 
 
-# ---------------------------------------------------------------- sidebar
 with st.sidebar:
     st.header("Monitoring settings")
     limit_km = st.number_input(
@@ -109,12 +95,7 @@ with st.sidebar:
     st.divider()
     st.subheader("GPS data source")
     uploaded = st.file_uploader("Upload GPS CSV export", type=["csv"])
-    st.caption("When a provider login/API becomes available, this CSV import "
-               "can be replaced with a live feed.")
-    if st.button("🔄 Refresh dashboard"):
-        st.rerun()
 
-# ---------------------------------------------------------------- load data
 if uploaded is not None:
     try:
         data = normalize(pd.read_csv(uploaded))
@@ -127,7 +108,6 @@ else:
     data = sample_data()
     data_source = "Simulated sample data"
 
-# ---------------------------------------------------------------- evaluate
 results, issues = [], []
 now = utc_now_naive()
 
@@ -144,7 +124,7 @@ for convoy, group in data.groupby("convoy_id", dropna=False):
     ref = refs.iloc[0]
     for _, row in group.iterrows():
         dist = haversine_km(ref.latitude, ref.longitude, row.latitude, row.longitude)
-        now = pd.Timestamp.now(tz="UTC").tz_convert(None)
+        age = (now - row.gps_time).total_seconds() / 60
         if age < -5:
             status = "GPS TIME CHECK"
         elif age > stale_mins:
@@ -164,7 +144,6 @@ if out.empty:
     st.warning("No valid GPS records found.")
     st.stop()
 
-# ---------------------------------------------------------------- KPIs
 total = len(out)
 outside = int((out.status == "OUTSIDE LIMIT").sum())
 stale = int((out.status == "STALE GPS").sum())
@@ -185,7 +164,6 @@ st.caption(
 for issue in issues:
     st.error(issue)
 
-# ---------------------------------------------------------------- selected convoy
 st.subheader("Current convoy location and status")
 convoys = sorted(out.convoy_id.dropna().astype(str).unique())
 selected = st.selectbox("Select convoy", convoys)
@@ -208,7 +186,6 @@ if len(ref_row) == 1:
 else:
     st.warning("This convoy needs exactly one reference truck before its centre can be calculated.")
 
-# ---------------------------------------------------------------- table
 def status_label(s):
     return {
         "WITHIN CONVOY": "🟢 WITHIN CONVOY",
@@ -232,7 +209,6 @@ display = display.rename(columns={
 })
 st.dataframe(display, use_container_width=True, hide_index=True)
 
-# ---------------------------------------------------------------- summaries
 st.subheader("All convoy summaries")
 summary = []
 for convoy, group in out.groupby("convoy_id"):
@@ -259,22 +235,3 @@ st.download_button(
     "convoy_monitor_report.csv",
     "text/csv",
 )
-
-with st.expander("GPS CSV format / integration notes"):
-    st.markdown("""
-Upload a CSV with these exact column headings:
-
-`convoy_id, registration, tour_no, latitude, longitude, is_reference, gps_time, speed_kmh`
-
-- `convoy_id`: convoy/group identifier.
-- `registration`: truck registration.
-- `tour_no`: trip/tour reference.
-- `latitude` / `longitude`: decimal GPS coordinates.
-- `is_reference`: TRUE for the designated reference (middle) truck; FALSE for others.
-- `gps_time`: timestamp of the GPS reading (interpreted as UTC).
-- `speed_kmh`: current speed in km/h.
-
-Each convoy must have exactly one designated reference truck. Distances are
-computed from that truck with the Haversine formula. The reference coordinate is
-the convoy's current centre location — it is not a reverse-geocoded street address.
-""")
