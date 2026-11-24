@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from math import radians, sin, cos, asin, sqrt
-from datetime import datetime
+from datetime import datetime, timezone
 
 # 1. Page configuration
 st.set_page_config(
@@ -24,18 +24,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Optional: You can add an image here later if you upload one to GitHub!
-# st.image("logo.png", width=150)
-
 st.title("🚛 CONVOY MONITOR")
 st.caption("ETA SECURITY & LOGISTICS LTD  |  Intelligent Fleet Monitoring & Control")
 st.info("DEMO MODE — positions are simulated unless you upload a GPS CSV. "
         "This prototype is not connected to a live GPS provider.")
-
-
-def utc_now_naive():
-    """Current UTC time as a tz-naive timestamp (matches tz-naive GPS times)."""
-    return pd.Timestamp.now(tz="UTC").tz_convert(None)
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -48,8 +40,9 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 
 def sample_data():
-    now = utc_now_naive()
-
+    # Generate safe UTC timestamps relative to right now
+    now = datetime.now(timezone.utc)
+    
     def ts(minutes_ago):
         return (now - pd.Timedelta(minutes=minutes_ago)).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -80,10 +73,8 @@ def normalize(df):
         .isin(["true", "1", "yes", "y"])
     )
 
-    df["gps_time"] = (
-        pd.to_datetime(df["gps_time"], errors="coerce", utc=True)
-        .dt.tz_convert(None)
-    )
+    # FORCE all GPS times into timezone-aware UTC, then strip the timezone for safe math
+    df["gps_time"] = pd.to_datetime(df["gps_time"], errors="coerce", utc=True).dt.tz_localize(None)
 
     df = df.dropna(subset=["latitude", "longitude", "gps_time"])
     df = df[df.latitude.between(-90, 90) & df.longitude.between(-180, 180)]
@@ -118,7 +109,9 @@ else:
     data_source = "Simulated sample data"
 
 results, issues = [], []
-now = utc_now_naive()
+
+# FORCE current time to match the exact same timezone-naive format
+now = pd.Timestamp(datetime.now(timezone.utc)).tz_localize(None)
 
 for convoy, group in data.groupby("convoy_id", dropna=False):
     refs = group[group["is_reference"]]
@@ -133,6 +126,8 @@ for convoy, group in data.groupby("convoy_id", dropna=False):
     ref = refs.iloc[0]
     for _, row in group.iterrows():
         dist = haversine_km(ref.latitude, ref.longitude, row.latitude, row.longitude)
+        
+        # Calculate age securely
         age = (now - row.gps_time).total_seconds() / 60
         
         if age < -5:
